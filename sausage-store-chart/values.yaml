@@ -6,6 +6,7 @@ global:
     port: "8200"
     scheme: http
     kvBackend: secret
+    kvDefaultContext: sausage-store
     vaultToken: ""
 
 environment: production
@@ -47,7 +48,10 @@ backend:
   revisionHistoryLimit: 15
   replicas: 1
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
   image: matthewsuprunov/sausage-backend:latest
   imagePullPolicy: Always
   resources:

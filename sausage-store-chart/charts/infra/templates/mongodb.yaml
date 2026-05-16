@@ -69,7 +69,7 @@ spec:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: mongodb-init-reports-user
+  name: mongodb-init-reports-user-{{ .Release.Revision }}
   namespace: {{ .Release.Namespace }}
 spec:
   ttlSecondsAfterFinished: 300
@@ -83,6 +83,8 @@ spec:
           envFrom:
             - secretRef:
                 name: mongodb-secret
+          resources:
+{{- toYaml .Values.mongodb.resources | nindent 12 }}
           command:
             - /bin/sh
             - -c
