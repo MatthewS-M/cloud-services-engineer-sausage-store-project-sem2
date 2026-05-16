@@ -17,8 +17,6 @@ kind: StatefulSet
 metadata:
   name: mongodb
   namespace: {{ .Release.Namespace }}
-  annotations:
-    helm.sh/hook-weight: "-5"
 spec:
   serviceName: mongodb
   replicas: 1
@@ -73,11 +71,8 @@ kind: Job
 metadata:
   name: mongodb-init-reports-user
   namespace: {{ .Release.Namespace }}
-  annotations:
-    helm.sh/hook: "post-install,post-upgrade"
-    helm.sh/hook-weight: "5"
-    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
 spec:
+  ttlSecondsAfterFinished: 300
   template:
     spec:
       restartPolicy: OnFailure
