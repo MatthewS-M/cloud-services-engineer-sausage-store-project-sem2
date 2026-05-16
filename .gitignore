@@ -1,1 +1,12 @@
 .env
+.DS_Store
+**/.DS_Store
+
+backend/.m2/
+backend/target/
+backend/${env:REPORT_PATH}/
+backend-report/.cache/
+frontend/node_modules/
+frontend/dist/
+sausage-store-chart/Chart.lock
+sausage-store-chart/charts/*.tgz

@@ -5,13 +5,23 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 env:
   NEXUS_HELM_REPO: ${{ secrets.NEXUS_HELM_REPO }}
   NEXUS_HELM_REPO_USER: ${{ secrets.NEXUS_HELM_REPO_USER }}
   NEXUS_HELM_REPO_PASSWORD: ${{ secrets.NEXUS_HELM_REPO_PASSWORD }}
-  SAUSAGE_STORE_NAMESPACE: YOUR_NAMESPACE
+  SAUSAGE_STORE_NAMESPACE: r-devops-magistracy-project-2sem-976514338
   KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+  DOCKER_USER: ${{ secrets.DOCKER_USER }}
   VAULT_TOKEN: ${{ secrets.VAULT_TOKEN }}
+  VAULT_HOST: ${{ vars.VAULT_HOST || '46.243.211.136' }}
+  VAULT_PORT: ${{ vars.VAULT_PORT || '8201' }}
+  VAULT_SCHEME: ${{ vars.VAULT_SCHEME || 'http' }}
+  VAULT_KV_BACKEND: ${{ vars.VAULT_KV_BACKEND || 'secret' }}
+  CHART_VERSION: 0.1.${{ github.run_number }}
+  APP_VERSION: ${{ github.sha }}
 
 jobs:
   # Сборка и пуш образов в докерхаб:
@@ -45,24 +55,27 @@ jobs:
             # но и отправить на Docker Hub:
             push: true
             # В параметре tags задаётся название и тег для образа.
-            # Для каждого пересобранного образа 
-            # устанавливаем тег latest, чтобы потом
-            # на сервере и в docker-compose.yml не указывать версию образа:
-            tags: YOUR_DOCKERHUB/sausage-backend:latest
+            tags: |
+              ${{ env.DOCKER_USER }}/sausage-backend:latest
+              ${{ env.DOCKER_USER }}/sausage-backend:${{ env.APP_VERSION }}
             build-args: |
-              VERSION=${{ github.sha }}
+              VERSION=${{ env.APP_VERSION }}
         - name: Push Frontend to DockerHub
           uses: docker/build-push-action@v4
           with:
             context: ./frontend/
             push: true
-            tags: YOUR_DOCKERHUB/sausage-frontend:latest
+            tags: |
+              ${{ env.DOCKER_USER }}/sausage-frontend:latest
+              ${{ env.DOCKER_USER }}/sausage-frontend:${{ env.APP_VERSION }}
         - name: Push Backend-report to DockerHub
           uses: docker/build-push-action@v4
           with:
             context: ./backend-report/
             push: true
-            tags: YOUR_DOCKERHUB/sausage-backend-report:latest
+            tags: |
+              ${{ env.DOCKER_USER }}/sausage-backend-report:latest
+              ${{ env.DOCKER_USER }}/sausage-backend-report:${{ env.APP_VERSION }}
   # Упаковываем helm-чарт и пушим его в Nexus
   add_helm_chart_to_nexus:
       name: Add Helm Chart To Nexus
@@ -70,7 +83,28 @@ jobs:
       needs: build_and_push_to_docker_hub
 
       steps:
-      #### Опишите необходимые шаги
+        - name: Check out the repo
+          uses: actions/checkout@v3
+        - name: Set up Helm
+          uses: azure/setup-helm@v4
+        - name: Build Helm dependencies
+          run: helm dependency build sausage-store-chart
+        - name: Lint Helm chart
+          run: helm lint sausage-store-chart
+        - name: Package Helm chart
+          run: |
+            mkdir -p dist
+            helm package sausage-store-chart \
+              --version "$CHART_VERSION" \
+              --app-version "$APP_VERSION" \
+              --destination dist
+        - name: Upload Helm chart to Nexus
+          run: |
+            CHART_PACKAGE="$(ls dist/sausage-store-*.tgz)"
+            curl --fail \
+              --user "$NEXUS_HELM_REPO_USER:$NEXUS_HELM_REPO_PASSWORD" \
+              --upload-file "$CHART_PACKAGE" \
+              "$NEXUS_HELM_REPO/$(basename "$CHART_PACKAGE")"
 
   # Деплоим приложения в кластер Kubernetes с помощью helm-чарт
   deploy_helm_chart_to_kubernetes:
@@ -79,4 +113,42 @@ jobs:
       needs: add_helm_chart_to_nexus
 
       steps:
-      #### Опишите необходимые шаги
+        - name: Set up Helm
+          uses: azure/setup-helm@v4
+        - name: Configure kubeconfig
+          run: |
+            mkdir -p "$HOME/.kube"
+            if printf '%s' "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config" 2>/dev/null; then
+              echo "Loaded base64 kubeconfig"
+            else
+              printf '%s' "$KUBE_CONFIG" > "$HOME/.kube/config"
+            fi
+            chmod 600 "$HOME/.kube/config"
+        - name: Add Nexus Helm repository
+          run: |
+            helm repo add nexus "$NEXUS_HELM_REPO" \
+              --username "$NEXUS_HELM_REPO_USER" \
+              --password "$NEXUS_HELM_REPO_PASSWORD"
+            helm repo update
+        - name: Deploy Helm chart to Kubernetes
+          run: |
+            : "${VAULT_TOKEN:?VAULT_TOKEN secret is required}"
+            : "${VAULT_HOST:?VAULT_HOST repository variable is required}"
+            VAULT_PORT="${VAULT_PORT:-8200}"
+            VAULT_SCHEME="${VAULT_SCHEME:-http}"
+            VAULT_KV_BACKEND="${VAULT_KV_BACKEND:-secret}"
+
+            helm upgrade --install sausage-store nexus/sausage-store \
+              --version "$CHART_VERSION" \
+              --namespace "$SAUSAGE_STORE_NAMESPACE" \
+              --wait \
+              --timeout 10m \
+              --set backend.image="$DOCKER_USER/sausage-backend:$APP_VERSION" \
+              --set frontend.image="$DOCKER_USER/sausage-frontend:$APP_VERSION" \
+              --set backend-report.image="$DOCKER_USER/sausage-backend-report:$APP_VERSION" \
+              --set frontend.ingress.host="front-matthewsuprunov.2sem.students-projects.ru" \
+              --set global.vault.vaultToken="$VAULT_TOKEN" \
+              --set global.vault.host="$VAULT_HOST" \
+              --set global.vault.port="$VAULT_PORT" \
+              --set global.vault.scheme="$VAULT_SCHEME" \
+              --set global.vault.kvBackend="$VAULT_KV_BACKEND"
