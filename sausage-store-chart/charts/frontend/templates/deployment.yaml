@@ -16,7 +16,7 @@ spec:
   revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
   replicas: {{ .Values.replicas }}
   strategy:
-    type: {{ .Values.strategy.type }}
+{{- toYaml .Values.strategy | nindent 4 }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}-{{ .Chart.Name }}
@@ -27,10 +27,10 @@ spec:
     spec:
       containers:
         - name: {{ .Chart.Name }}
-          image: {{ .Values.image }}
+          image: {{ .Values.image | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           resources:
-{{ toYaml .Values.resources | indent 12 }} 
+{{- toYaml .Values.resources | nindent 12 }}
           ports:
             - name: {{ .Chart.Name }}
               containerPort: {{ .Values.containerPort }}
