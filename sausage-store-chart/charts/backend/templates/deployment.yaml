@@ -52,6 +52,8 @@ spec:
               value: {{ .Values.global.vault.scheme | quote }}
             - name: SPRING_CLOUD_VAULT_KV_BACKEND
               value: {{ .Values.global.vault.kvBackend | quote }}
+            - name: SPRING_CLOUD_VAULT_KV_DEFAULT_CONTEXT
+              value: {{ .Values.global.vault.kvDefaultContext | quote }}
             - name: REPORT_PATH
               valueFrom:
                 configMapKeyRef:

@@ -161,6 +161,7 @@ jobs:
               --namespace "$SAUSAGE_STORE_NAMESPACE" \
               --wait \
               --timeout 10m \
+              --history-max 3 \
               --set backend.image="$DOCKER_USER/sausage-backend:$APP_VERSION" \
               --set frontend.image="$DOCKER_USER/sausage-frontend:$APP_VERSION" \
               --set backend-report.image="$DOCKER_USER/sausage-backend-report:$APP_VERSION" \
